@@ -416,7 +416,7 @@ def chart_time_distribution(df, race):
     m_p = mpatches.Patch(color=C_BLUE, alpha=0.85, label='Male')
     f_p = mpatches.Patch(color=C_PINK, alpha=0.85, label='Female')
     ax.legend(handles=[m_p, f_p], fontsize=8, loc='upper right')
-    style_ax(ax, title='Finish Time Distribution (15-min buckets)',
+    style_ax(ax, title=f'Finish Time Distribution ({bucket}-min buckets)',
              xlabel='Finish Time (chip)', ylabel='Finishers')
     fig.tight_layout()
     return fig_to_image(fig, width_cm=15)
@@ -1058,8 +1058,7 @@ def build_pdf(df, year, out_path, club_name=None):
 
     # ── PAGE 1: COVER ─────────────────────────────────────────────────────────
     story.append(Spacer(1, 1*cm))
-    story.append(Paragraph(f'Cork City Marathon {year}', TITLE))
-    story.append(Paragraph('Analog Devices Cork City Marathon', SUB))
+    story.append(Paragraph(f'Analog Devices Cork City Marathon {year}', TITLE))
     story.append(Paragraph('Race Results Analysis', SUB))
     story.append(Spacer(1, 1.2*cm))
 
@@ -1107,6 +1106,8 @@ def build_pdf(df, year, out_path, club_name=None):
 
     # Gender split chart
     story.append(chart_gender_split(df, year))
+    story.append(Spacer(1, 0.4*cm))
+    story.append(Paragraph('Designed with Claude Cowork · Generated in Claude Code', FOOT))
     story.append(PageBreak())
 
     # ── PAGES 2-4: PER-RACE ───────────────────────────────────────────────────
@@ -1128,7 +1129,7 @@ def build_pdf(df, year, out_path, club_name=None):
         m_str  = f"{st['male']:,} ({st['pct_male']}%)"
         f_str  = f"{st['female']:,} ({st['pct_female']}%)"
         left_data = [
-            ['Total Finishers', f"{st['total']:,}"],
+            ['Total Finishers', Paragraph(f"{st['total']:,}", BODYR)],
             ['Male Finishers',   Paragraph(colored(m_str, C_BLUE),  BODYR)],
             ['Female Finishers', Paragraph(colored(f_str, C_PINK),  BODYR)],
             ['Fastest Overall',  Paragraph(colored(sec_to_hms(st['fastest']), C_GOLD), BODYR)],
@@ -1340,6 +1341,7 @@ def build_pdf(df, year, out_path, club_name=None):
             if matched:
                 print(f"  Adding club deep dive for: {matched}")
                 build_club_section(df, matched, year, story, styles_dict)
+                build_club_finish_time_page(df, matched, story, styles_dict)
             else:
                 print(f"  WARNING: club '{name}' not found — skipped.")
                 sample = sorted(df[df['club'].str.strip()!='']['club'].str.strip().unique())[:10]
@@ -1783,7 +1785,7 @@ def build_club_section(df, club_name, year, story, styles):
         m_str = f"{len(m)} ({round(100*len(m)/len(r))}%)" if len(r) else '—'
         f_str = f"{len(f)} ({round(100*len(f)/len(r))}%)" if len(r) else '—'
         left_data = [
-            ['Total Finishers', str(len(r))],
+            ['Total Finishers', Paragraph(str(len(r)), BODYR)],
             ['Male Finishers',   Paragraph(colored(m_str, C_BLUE), BODYR)],
             ['Female Finishers', Paragraph(colored(f_str, C_PINK), BODYR)],
             ['Fastest Overall',  Paragraph(colored(sec_to_hms(r['sec'].min()), C_GOLD), BODYR)],
@@ -1794,9 +1796,9 @@ def build_club_section(df, club_name, year, story, styles):
             ['Median Overall',        Paragraph(f"<b>{sec_to_hms(r['sec'].median())}</b>", BODYR)],
             ['Median Male',           Paragraph(colored(sec_to_hms(m['sec'].median() if len(m) else None), C_BLUE), BODYR)],
             ['Median Female',         Paragraph(colored(sec_to_hms(f['sec'].median() if len(f) else None), C_PINK), BODYR)],
-            ['Rank (by count)',       club_rank(race, 'count')],
-            ['Rank (by median time)', club_rank(race, 'median')],
-            ['Field percentile',      percentile_in_field(race)],
+            ['Rank (by count)',       Paragraph(str(club_rank(race, 'count')), BODYR)],
+            ['Rank (by median time)', Paragraph(str(club_rank(race, 'median')), BODYR)],
+            ['Field percentile',      Paragraph(str(percentile_in_field(race)), BODYR)],
         ]
 
         tl = Table(left_data,  colWidths=[4.2*cm, 4*cm])
@@ -1821,9 +1823,26 @@ def build_club_section(df, club_name, year, story, styles):
         if img:
             story.append(img)
 
-    # ── KDE finish time pages ─────────────────────────────────────────────────
+    # KDE + Key Insights are on the final page — built by build_club_finish_time_page()
+
+
+def build_club_finish_time_page(df, club_name, story, styles):
+    """Last page of a club deep dive: KDE finish time charts + key insights."""
+    SEC    = styles['SEC']
+    SUBSEC = styles['SUBSEC']
+    BODY   = styles['BODY']
+    hr     = styles['hr']
+
+    INSIGHT      = ParagraphStyle('ClubINSIGHT', fontName='Helvetica', fontSize=9,
+                                  textColor=colors.HexColor('#444444'),
+                                  spaceAfter=3, leading=13, leftIndent=6)
+    INSIGHT_HEAD = ParagraphStyle('ClubINSIGHT_HEAD', fontName='Helvetica-Bold', fontSize=9,
+                                  textColor=colors.HexColor(C_GREEN), spaceAfter=2)
+
+    sub = df[df['club'].str.strip() == club_name]
+
     story.append(PageBreak())
-    story.append(HR())
+    story.append(hr())
     story.append(Paragraph(f'{club_name} — Finish Time Analysis', SEC))
     story.append(Paragraph(
         'Kernel density estimate (KDE) — smoother than a histogram for club-sized samples. '
@@ -1838,6 +1857,76 @@ def build_club_section(df, club_name, year, story, styles):
     img = chart_club_kde_by_race_gender(df, club_name)
     if img:
         story.append(img)
+
+    # ── Key Insights ──────────────────────────────────────────────────────────
+    race_labels_dd = {'Full': 'Full Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+
+    def club_rank_local(race, metric='count'):
+        r = df[(df['race'] == race) & (df['club'].str.strip() != '')]
+        c = sub[sub['race'] == race]
+        if c.empty: return '—'
+        if metric == 'count':
+            counts = r.groupby(r['club'].str.strip()).size().sort_values(ascending=False)
+            if club_name in counts.index:
+                pos = list(counts.index).index(club_name) + 1
+                return f"{pos} of {len(counts)}"
+        elif metric == 'median':
+            medians = r.groupby(r['club'].str.strip())['sec'].median().sort_values()
+            if club_name in medians.index:
+                pos = list(medians.index).index(club_name) + 1
+                return f"{pos} of {len(medians)}"
+        return '—'
+
+    bullets = []
+
+    # Best race by field percentile
+    best_race, best_pct_val = None, -1
+    for race in RACES:
+        r = df[df['race'] == race]; c = sub[sub['race'] == race]
+        if r.empty or c.empty: continue
+        pct_val = (r['sec'] > c['sec'].median()).mean() * 100
+        if pct_val > best_pct_val:
+            best_race, best_pct_val = race, pct_val
+    if best_race:
+        bullets.append(
+            f"{club_name} performs strongest in the {race_labels_dd[best_race]}, "
+            f"with a median time faster than {best_pct_val:.0f}% of all finishers.")
+
+    # Gender split vs field
+    if len(sub) > 0:
+        club_f  = round(100 * len(sub[sub['sex']=='F']) / len(sub))
+        field_f = round(100 * len(df[df['sex']=='F'])  / len(df))
+        direction = "above" if club_f > field_f else "below"
+        bullets.append(
+            f"Female membership is {club_f}% — {direction} the overall field average of {field_f}%.")
+
+    # Dominant age group
+    decade_codes = [('M','F'),('M35','F35'),('M40','F40'),
+                    ('M45','F45'),('M50','F50'),('M55','F55')]
+    decade_lbls  = ['18–34','35–39','40–44','45–49','50–54','55–59']
+    ag_counts = {lbl: len(sub[sub['ag'].isin([mc,fc])])
+                 for lbl,(mc,fc) in zip(decade_lbls, decade_codes)}
+    if ag_counts and max(ag_counts.values()) > 0:
+        top_ag = max(ag_counts, key=lambda k: ag_counts[k])
+        pct_ag = round(100 * ag_counts[top_ag] / len(sub))
+        bullets.append(
+            f"The {top_ag} age group is the club's largest cohort at {pct_ag}% of all finishers.")
+
+    # Ranking summary
+    rank_parts = []
+    for race in RACES:
+        rnk = club_rank_local(race, 'count')
+        if rnk != '—':
+            pos, total = rnk.split(' of ')
+            rank_parts.append(f"{race_labels_dd[race]}: #{pos} of {total} clubs")
+    if rank_parts:
+        bullets.append("Finisher count rankings — " + " · ".join(rank_parts) + ".")
+
+    if bullets:
+        story.append(Spacer(1, 0.4*cm))
+        story.append(Paragraph('Key Insights', INSIGHT_HEAD))
+        for b in bullets:
+            story.append(Paragraph(f'• {b}', INSIGHT))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

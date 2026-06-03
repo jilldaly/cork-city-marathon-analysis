@@ -4,27 +4,47 @@ A Python-based report generator for the Analog Devices Cork City Marathon, produ
 
 ## Features
 
-### Single-Year Reports (`generate_single_year_report.py`)
-- **Cover page** with summary table and gender split chart
-- **Per-race sections** (Marathon, Half Marathon, 10K):
+### Combined Report (`generate_combined_report.py`) — recommended
+- **Cover page** with title and section contents
+- **Section 1 — Overall Marathon Analysis** (latest year):
+  - Summary table and gender split chart
+  - Per-race pages (Marathon, Half Marathon, 10K): stats tables, finish-time distributions, age-group charts
+- **Section 2 — Marathon Trend Analysis** (all years):
+  - Total finishers trend per race
+  - Female and male participation % trends
+  - Finisher count by race and gender
+  - Median finish time trends by race and gender
+  - Age group participation trends
+  - Age group median finish time trends
+  - Finish time distribution boxplots per race
+  - **Key Insights page** — auto-generated analysis of participation growth, gender balance, time stability, and performance spread
+- **Section 3 — All Clubs Overall Analysis** (latest year):
+  - Club affiliation rates and word cloud
+  - Club overlap Venn diagram with region breakdown table
+  - Club team performance — average top-5 finish time (clubs with ≥5 finishers)
+  - Age group heatmaps (overall, per race; clubs with ≥15 finishers for Full/10K, ≥20 for Half)
+  - Top clubs per race and combined ranking
+- **Section 4 — All Clubs Trend Analysis** (all years):
+  - Club count and affiliation rate trends
+  - Top clubs trend across years
+- **Section 5 — Per-club deep dive** (one per `--club` argument):
+  - Overview: summary table, gender split per race, overall age breakdown, age × race heatmaps
+  - Per-race pages: stats table, finish time vs field, age group breakdown
+  - Club trend: multi-year participation and median time trends
+  - **Finish Time Analysis + Key Insights** (always last): KDE curves vs field, gender KDE split, auto-generated club insights
+
+### Single-Year Report (`generate_single_year_report.py`)
+- Cover page with summary table and gender split
+- Per-race sections (Marathon, Half Marathon, 10K):
   - Key statistics tables with colour-coded fastest/median times
   - Finish-time distributions (15-min buckets; 5-min for 10K)
   - Age-group count and median-time charts (male and female)
-- **Club analysis**:
-  - Club affiliation rates and unique club counts
-  - Club word cloud — all clubs sized by finisher count
-  - Club overlap Venn diagram across the three races
-  - Club team performance — average top-5 finish time (clubs with ≥5 finishers)
-  - Age group heatmaps — combined, per race, and by gender
-  - Top clubs per race and combined ranking
-- **Optional club deep dive** (`--club`) — 4-page anonymised analysis of a single club
+- Club analysis: affiliation rates, word cloud, Venn diagram, team performance, heatmaps, top clubs
+- **Optional club deep dive** (`--club`): overview, per-race stats, KDE finish time analysis, key insights
 
-### Multi-Year Reports (`generate_report.py`)
-- **Participation trends** across 2024–2026
-- **Finish-time analysis** by year, gender, and race
-- **Female participation trends**
-- **Age-group breakdowns and trends**
-- **Club word cloud** across all years
+### Multi-Year Report (`generate_report.py`)
+- Participation and finish-time trends across 2024–2026
+- Age-group breakdowns and club word cloud
 
 ## Requirements
 
@@ -37,13 +57,7 @@ A Python-based report generator for the Analog Devices Cork City Marathon, produ
 pip install -r requirements.txt
 ```
 
-Key packages:
-- `matplotlib` — charting and visualization
-- `pandas` — data analysis
-- `reportlab` — PDF generation
-- `numpy` — numerical computing
-- `scipy` — statistical functions (KDE estimation)
-- `wordcloud` — club word cloud visualization
+Key packages: `matplotlib`, `pandas`, `reportlab`, `numpy`, `scipy`, `wordcloud`
 
 ## Data Structure
 
@@ -65,102 +79,76 @@ data/cork/
 
 ## Usage
 
+### Combined Report (recommended)
+
+```bash
+# Full report, latest year
+python generate_combined_report.py
+
+# With one or more club deep dives
+python generate_combined_report.py --club "Togher A.C."
+python generate_combined_report.py --club "Togher A.C." "Eagle A.C." "Leevale A.C."
+
+# Custom year or output path
+python generate_combined_report.py --year 2025 --out report_charts/combined_2025.pdf
+```
+
+Options:
+- `--year`: Most recent year for single-year sections (default: `2026`)
+- `--data`: Base data directory (default: `data/cork`)
+- `--out`: Output PDF path (default: `report_charts/cork_marathon_combined.pdf`)
+- `--club`: One or more club names for deep dive + trend sections (optional)
+
 ### Single-Year Report
-Generate a detailed report for a specific year:
 
 ```bash
 python generate_single_year_report.py --year 2026
-python generate_single_year_report.py --year 2025 --data data/cork --out report_charts/2025_report.pdf
+python generate_single_year_report.py --year 2026 --club "Togher A.C." "Eagle A.C."
+python generate_single_year_report.py --year 2026 --club "Eagle A.C." --out report_charts/eagle_2026.pdf
 ```
 
 Options:
 - `--year` (required): Race year (e.g. 2026)
 - `--data`: Base data directory (default: `data/cork`)
 - `--out`: Output PDF path (default: `report_charts/cork_marathon_<year>_single.pdf`)
-- `--club`: Club name for a deep dive section (optional — see below)
+- `--club`: One or more club names for deep dive sections (optional)
 
-### Club Deep Dive
-
-Pass `--club` with one or more club names to append a detailed club analysis section for each at the end of the report. No athlete names are used anywhere in the output.
-
-```bash
-# Single club
-python generate_single_year_report.py --year 2026 --club "Togher A.C."
-
-# Multiple clubs — each gets its own deep dive section
-python generate_single_year_report.py --year 2026 --club "Togher A.C." "Eagle A.C."
-python generate_single_year_report.py --year 2026 --club "St. Finbarrs A.C." "Leevale A.C." "Carrigaline A.C."
-
-# Custom output filename
-python generate_single_year_report.py --year 2026 --club "Eagle A.C." --out report_charts/eagle_2026.pdf
-```
-
-Each club deep dive adds **4 pages** to the report:
-
-- **Overview page** — summary table showing finishers, fastest, median, rank among all clubs, and field percentile for each race; gender split chart; overall age group breakdown
-- **Marathon page** — stats table, finish time distribution overlaid on the full field, age group breakdown
-- **Half Marathon page** — same
-- **10K page** — same
-
-Club names use fuzzy matching, so minor spelling differences will still find the right club. If no match is found the script prints a sample of available club names.
+Club names use fuzzy matching — minor spelling differences are handled. If no match is found the script prints available club names.
 
 ### Multi-Year Report
-Generate a cross-year analysis report:
 
 ```bash
 python generate_report.py
 python generate_report.py --data data/cork --out report_charts/analysis.pdf
 ```
 
-Options:
-- `--data`: Directory containing year subdirectories (default: `data/cork`)
-- `--out`: Output PDF path (default: `report_charts/cork_marathon_analysis.pdf`)
-
-## Output
-
-Reports are saved as PDF files to `report_charts/` by default.
-
-### Single-Year Report Pages
-- Page 1: Cover with summary
-- Pages 2–4: Full Marathon, Half Marathon, 10K details
-- Pages 5–7: Club analysis, affiliation, rankings
-- Page 8: **Club word cloud** (all clubs)
-- Page 9: Club overlap Venn diagram
-
-### Multi-Year Report Pages
-- Page 1: Cover with 3-year summary
-- Pages 2–3: Participation trends
-- Pages 4–5: Finish-time analysis
-- Pages 6–7: Age-group analysis
-- Page 8: **Club word cloud** (all clubs, all years)
-- Final page: Key insights
-
 ## Project Structure
 
 ```
 cork_city_marathon_2026/
-├── generate_report.py              # Multi-year report generator
-├── generate_single_year_report.py  # Single-year report generator
+├── generate_combined_report.py     # Combined report (recommended)
+├── generate_single_year_report.py  # Single-year report + shared chart functions
+├── generate_report.py              # Standalone multi-year trend report
 ├── requirements.txt                # Python dependencies
 ├── data/cork/                      # Race result PDFs (not committed)
 ├── report_charts/                  # Generated PDF reports
-├── README.md                       # This file
-└── .gitignore
+└── README.md
 ```
 
 ## How It Works
 
-1. **PDF Conversion**: Uses `pdftotext` (poppler) to extract text from PDF result files
-2. **Parsing**: Extracts finisher records (name, club, sex, age group, finish time)
-3. **Analysis**: Computes statistics, trends, and groupings
-4. **Visualization**: Generates charts using matplotlib
-5. **PDF Assembly**: Uses reportlab to build final multi-page PDF report
+1. **PDF Conversion**: Uses `pdftotext` (poppler) to extract text from result PDFs
+2. **Parsing**: Extracts finisher records — name, club, sex, age group, finish time
+3. **Analysis**: Computes statistics, trends, and groupings across years and clubs
+4. **Visualization**: Generates charts using matplotlib (KDE, histograms, heatmaps, boxplots, line/bar charts)
+5. **PDF Assembly**: Builds the final multi-page PDF using reportlab
 
 ## Notes
 
-- The word cloud library is optional; a fallback matplotlib-based visualization is used if not installed
-- Large PDF files may take 1–2 minutes to parse and convert
-- All generated PDFs are saved with high DPI (150) for print quality
+- Word cloud is optional — a fallback chart is used if `wordcloud` is not installed
+- Large PDFs may take 1–2 minutes to parse
+- All charts are rendered at 150 DPI for print quality
+- No athlete names appear anywhere in the output
 
 ## License
 
@@ -169,3 +157,8 @@ Data sourced from official Cork City Marathon timing results.
 ## Author
 
 Analysis report generator for Analog Devices Cork City Marathon 2024–2026.
+
+## Credits
+
+- Designed with [Claude Cowork](https://claude.ai)
+- Generated in [Claude Code](https://claude.ai/code)
