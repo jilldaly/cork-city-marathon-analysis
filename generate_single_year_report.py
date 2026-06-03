@@ -1373,7 +1373,7 @@ def _find_club(df, club_name):
 def chart_club_vs_field(df, race, club_name):
     """
     Finish time distribution: overall field in grey, club in green.
-    Median lines for field and club. No athlete names.
+    Median lines for field and club.
     """
     sub      = df[df['race'] == race]
     club_sub = sub[sub['club'].str.strip() == club_name]
@@ -1640,7 +1640,7 @@ def chart_club_kde_by_race_gender(df, club_name):
 
 
 def build_club_section(df, club_name, year, story, styles):
-    """Append club deep dive pages to story. No athlete names used anywhere."""
+    """Append club deep dive pages to story."""
     SEC, SUBSEC, BODY, BODYR, BODYCB, BODYCB2, CT, HR = (
         styles['SEC'], styles['SUBSEC'], styles['BODY'],
         styles['BODYR'], styles['BODYCB'], styles['BODYCB'],

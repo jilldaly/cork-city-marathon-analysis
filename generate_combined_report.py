@@ -506,7 +506,7 @@ def chart_club_trend_age_heatmap(df: pd.DataFrame, club_name: str) -> Image:
 
 def build_club_trend_section(df_all: pd.DataFrame, club_name: str,
                              story: list, styles: dict) -> None:
-    """Append multi-year club trend pages to story. No athlete names."""
+    """Append multi-year club trend pages to story."""
     SEC, SUBSEC, BODY, HR = (
         styles['SEC'], styles['SUBSEC'], styles['BODY'], styles['hr'])
 
@@ -521,8 +521,7 @@ def build_club_trend_section(df_all: pd.DataFrame, club_name: str,
     story.append(HR())
     story.append(Paragraph(f'{club_name} — Trend Analysis {year_range}', SEC))
     story.append(Paragraph(
-        f'Year-on-year performance across {len(avail_years)} seasons. '
-        'No athlete names used.', SUBSEC))
+        f'Year-on-year performance across {len(avail_years)} seasons.', SUBSEC))
     story.append(Spacer(1, 0.3*cm))
 
     img = chart_club_trend_participation(df_all, club_name)

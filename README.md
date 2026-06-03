@@ -148,7 +148,6 @@ cork_city_marathon_2026/
 - Word cloud is optional — a fallback chart is used if `wordcloud` is not installed
 - Large PDFs may take 1–2 minutes to parse
 - All charts are rendered at 150 DPI for print quality
-- No athlete names appear anywhere in the output
 
 ## License
 
