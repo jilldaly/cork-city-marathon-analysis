@@ -43,6 +43,8 @@ env/
 
 # Project-specific
 report_charts/*.pdf
-*.txt
-back_up_reports/
 .env
+# Temporary text files from pdftotext conversion (not requirements.txt)
+data/cork/**/*.txt
+report_charts/**/*.txt
+back_up_reports/

@@ -42,6 +42,7 @@ Key packages:
 - `pandas` — data analysis
 - `reportlab` — PDF generation
 - `numpy` — numerical computing
+- `scipy` — statistical functions (KDE estimation)
 - `wordcloud` — club word cloud visualization
 
 ## Data Structure
