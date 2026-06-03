@@ -1526,7 +1526,7 @@ def build_club_section(df, club_name, year, story, styles):
 
     # Summary table
     hdr = ['Race', 'Finishers', 'Male', 'Female', 'Fastest', 'Median',
-           'Rank (count)', 'Field Percentile']
+           'Rank (count)', 'Percentile']
     rows = [hdr]
     race_labels = {'Full': 'Marathon', 'Half': 'Half Marathon', '10K': '10K'}
     totals = {'fin': 0, 'm': 0, 'f': 0}
@@ -1534,26 +1534,28 @@ def build_club_section(df, club_name, year, story, styles):
         r = sub[sub['race'] == race]
         if r.empty:
             continue
-        m = len(r[r['sex']=='M']); f = len(r[r['sex']=='F'])
-        totals['fin'] += len(r); totals['m'] += m; totals['f'] += f
+        m_c = len(r[r['sex']=='M']); f_c = len(r[r['sex']=='F'])
+        totals['fin'] += len(r); totals['m'] += m_c; totals['f'] += f_c
         rows.append([
             race_labels[race],
-            str(len(r)), str(m), str(f),
-            Paragraph(colored(sec_to_hms(r['sec'].min()), C_GOLD), BODYCB),
+            str(len(r)), str(m_c), str(f_c),
+            sec_to_hms(r['sec'].min()),   # plain string, colored via TableStyle below
             sec_to_hms(r['sec'].median()),
             club_rank(race, 'count'),
             percentile_in_field(race),
         ])
     rows.append([
-        Paragraph('<b>Total</b>', BODY),
-        Paragraph(f"<b>{totals['fin']}</b>", BODYCB),
-        Paragraph(f"<b>{totals['m']}</b>", BODYCB),
-        Paragraph(f"<b>{totals['f']}</b>", BODYCB),
+        'Total',
+        str(totals['fin']), str(totals['m']), str(totals['f']),
         '—', '—', '—', '—',
     ])
 
-    t = Table(rows, colWidths=[2.8*cm,1.8*cm,1.4*cm,1.5*cm,2*cm,2*cm,2.5*cm,2.5*cm])
-    t.setStyle(tsg())
+    # colWidths summing to 17cm
+    t = Table(rows, colWidths=[3*cm, 2*cm, 1.7*cm, 1.7*cm, 2.1*cm, 2.1*cm, 2.5*cm, 1.9*cm])
+    ts = tsg()
+    ts.add('TEXTCOLOR', (4, 1), (4, -2), colors.HexColor(C_GOLD))   # fastest col gold
+    ts.add('FONTNAME',  (0,-1), (-1,-1), 'Helvetica-Bold')
+    t.setStyle(ts)
     story.append(t)
     story.append(Spacer(1, 0.4*cm))
 
