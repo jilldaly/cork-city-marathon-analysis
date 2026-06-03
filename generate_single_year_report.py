@@ -823,8 +823,6 @@ def _word_cloud_matplotlib(counts, n_clubs):
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.set_xlim(-1, 1); ax.set_ylim(-0.55, 0.55)
     ax.axis('off')
-    ax.set_title(f'Club Word Cloud — {n_clubs} clubs · size ∝ finishers',
-                 fontsize=11, fontweight='bold', pad=8)
 
     max_count = max(counts.values())
     min_fs, max_fs = 7, 42
@@ -891,22 +889,21 @@ def chart_word_cloud(df):
 
     if HAS_WORDCLOUD:
         wc = WordCloud(
-            width=1800, height=900,
+            width=2000, height=1000,
             background_color='white',
             colormap='tab20',
-            max_font_size=160,
+            max_font_size=180,
             min_font_size=7,
             prefer_horizontal=0.65,
             collocations=False,
-            relative_scaling=0.55,
+            relative_scaling=0.5,
             margin=2,
         ).generate_from_frequencies(counts)
         fig, ax = plt.subplots(figsize=(14, 7))
         ax.imshow(wc, interpolation='bilinear')
         ax.axis('off')
-        ax.set_title(f'Club Word Cloud — {n_clubs} clubs · size ∝ finishers',
-                     fontsize=11, fontweight='bold', pad=8)
-        fig.tight_layout(pad=0.2)
+        # Title is shown as a ReportLab paragraph above — no duplicate title here
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
         return fig_to_image(fig, width_cm=17)
 
     return _word_cloud_matplotlib(counts, n_clubs)
@@ -1318,19 +1315,21 @@ def build_pdf(df, year, out_path, club_name=None):
     if img: story.append(img)
     story.append(PageBreak())
 
-    # ── CLUB DEEP DIVE (optional) ─────────────────────────────────────────────
+    # ── CLUB DEEP DIVE (optional, one or more clubs) ──────────────────────────
     if club_name:
-        matched = _find_club(df, club_name)
-        if matched:
-            print(f"  Adding club deep dive for: {matched}")
-            styles_dict = {
-                'SEC': SEC, 'SUBSEC': SUBSEC, 'BODY': BODY,
-                'BODYR': BODYR, 'BODYCB': BODYCB, 'CT': CT, 'hr': hr,
-            }
-            build_club_section(df, matched, year, story, styles_dict)
-        else:
-            print(f"  WARNING: club '{club_name}' not found in data — deep dive skipped.")
-            print(f"  Available clubs (sample): {sorted(df[df['club'].str.strip()!='']['club'].str.strip().unique())[:10]}")
+        styles_dict = {
+            'SEC': SEC, 'SUBSEC': SUBSEC, 'BODY': BODY,
+            'BODYR': BODYR, 'BODYCB': BODYCB, 'CT': CT, 'hr': hr,
+        }
+        for name in club_name:
+            matched = _find_club(df, name)
+            if matched:
+                print(f"  Adding club deep dive for: {matched}")
+                build_club_section(df, matched, year, story, styles_dict)
+            else:
+                print(f"  WARNING: club '{name}' not found — skipped.")
+                sample = sorted(df[df['club'].str.strip()!='']['club'].str.strip().unique())[:10]
+                print(f"  Available clubs (sample): {sample}")
 
     # ── BUILD ─────────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
@@ -1518,7 +1517,6 @@ def build_club_section(df, club_name, year, story, styles):
         return f"{pct:.0f}%"
 
     # ── PAGE 1: Club Overview ─────────────────────────────────────────────────
-    story.append(PageBreak())
     story.append(HR())
     story.append(Paragraph(f'Club Deep Dive: {club_name}', SEC))
     story.append(Paragraph(f'{year} Race Results — Anonymised Analysis', SUBSEC))
@@ -1563,7 +1561,7 @@ def build_club_section(df, club_name, year, story, styles):
     img_g   = chart_club_gender_per_race(df, club_name)
     img_age = chart_club_age_breakdown(df, club_name, race=None)
     if img_g and img_age:
-        pair = Table([[img_g, Spacer(0.4*cm, 1), img_age]],
+        pair = Table([[img_g, '', img_age]],
                      colWidths=[7.2*cm, 0.4*cm, 9*cm])
         pair.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
         story.append(pair)
@@ -1607,7 +1605,7 @@ def build_club_section(df, club_name, year, story, styles):
         for t in [tl, tr]:
             t.setStyle(ts_plain())
 
-        pair = Table([[tl, Spacer(0.6*cm, 1), tr]],
+        pair = Table([[tl, '', tr]],
                      colWidths=[8.2*cm, 0.6*cm, 8.2*cm])
         pair.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
         story.append(pair)
@@ -1638,8 +1636,9 @@ def main():
                     help='Base data directory containing year sub-folders (default: data/cork)')
     ap.add_argument('--out', default=None,
                     help='Output PDF path (default: report_charts/cork_marathon_<year>_single.pdf)')
-    ap.add_argument('--club', default=None,
-                    help='Club name for deep dive section, e.g. --club "Togher A.C."')
+    ap.add_argument('--club', nargs='+', default=None,
+                    help='One or more club names for deep dive sections, '
+                         'e.g. --club "Togher A.C." "Eagle A.C."')
     args = ap.parse_args()
 
     out = args.out or f'report_charts/cork_marathon_{args.year}_single.pdf'

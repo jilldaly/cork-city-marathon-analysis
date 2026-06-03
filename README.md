@@ -7,15 +7,17 @@ A Python-based report generator for the Analog Devices Cork City Marathon, produ
 ### Single-Year Reports (`generate_single_year_report.py`)
 - **Cover page** with summary table and gender split chart
 - **Per-race sections** (Marathon, Half Marathon, 10K):
-  - Key statistics tables
-  - Finish-time distributions
-  - Age-group charts (male and female breakdowns)
+  - Key statistics tables with colour-coded fastest/median times
+  - Finish-time distributions (15-min buckets; 5-min for 10K)
+  - Age-group count and median-time charts (male and female)
 - **Club analysis**:
-  - Club affiliation rates
-  - Top clubs per race
-  - Combined club rankings across all races
-  - **Club word cloud** — visual representation of all participating clubs
-  - Venn diagram showing club overlap between races
+  - Club affiliation rates and unique club counts
+  - Club word cloud — all clubs sized by finisher count
+  - Club overlap Venn diagram across the three races
+  - Club team performance — average top-5 finish time (clubs with ≥5 finishers)
+  - Age group heatmaps — combined, per race, and by gender
+  - Top clubs per race and combined ranking
+- **Optional club deep dive** (`--club`) — 4-page anonymised analysis of a single club
 
 ### Multi-Year Reports (`generate_report.py`)
 - **Participation trends** across 2024–2026
@@ -74,6 +76,32 @@ Options:
 - `--year` (required): Race year (e.g. 2026)
 - `--data`: Base data directory (default: `data/cork`)
 - `--out`: Output PDF path (default: `report_charts/cork_marathon_<year>_single.pdf`)
+- `--club`: Club name for a deep dive section (optional — see below)
+
+### Club Deep Dive
+
+Pass `--club` with one or more club names to append a detailed club analysis section for each at the end of the report. No athlete names are used anywhere in the output.
+
+```bash
+# Single club
+python generate_single_year_report.py --year 2026 --club "Togher A.C."
+
+# Multiple clubs — each gets its own deep dive section
+python generate_single_year_report.py --year 2026 --club "Togher A.C." "Eagle A.C."
+python generate_single_year_report.py --year 2026 --club "St. Finbarrs A.C." "Leevale A.C." "Carrigaline A.C."
+
+# Custom output filename
+python generate_single_year_report.py --year 2026 --club "Eagle A.C." --out report_charts/eagle_2026.pdf
+```
+
+Each club deep dive adds **4 pages** to the report:
+
+- **Overview page** — summary table showing finishers, fastest, median, rank among all clubs, and field percentile for each race; gender split chart; overall age group breakdown
+- **Marathon page** — stats table, finish time distribution overlaid on the full field, age group breakdown
+- **Half Marathon page** — same
+- **10K page** — same
+
+Club names use fuzzy matching, so minor spelling differences will still find the right club. If no match is found the script prints a sample of available club names.
 
 ### Multi-Year Report
 Generate a cross-year analysis report:
