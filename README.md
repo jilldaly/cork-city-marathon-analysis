@@ -96,7 +96,7 @@ python generate_combined_report.py --year 2025 --out report_charts/combined_2025
 Options:
 - `--year`: Most recent year for single-year sections (default: `2026`)
 - `--data`: Base data directory (default: `data/cork`)
-- `--out`: Output PDF path (default: `report_charts/cork_marathon_combined.pdf`)
+- `--out`: Output PDF path (default: `report_charts/analog_devices_cork_marathon_analysis.pdf`)
 - `--club`: One or more club names for deep dive + trend sections (optional)
 
 ### Single-Year Report
@@ -162,3 +162,4 @@ Analysis report generator for Analog Devices Cork City Marathon 2024–2026.
 
 - Designed with [Claude Cowork](https://claude.ai)
 - Generated in [Claude Code](https://claude.ai/code)
+- Grafted by a Human

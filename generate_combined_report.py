@@ -822,7 +822,7 @@ def build_combined_pdf(df_latest: pd.DataFrame, df_all: pd.DataFrame,
     story.append(toc)
     story += [
         Spacer(1, 0.6*cm),
-        Paragraph('Designed with Claude Cowork · Generated in Claude Code', FOOT),
+        Paragraph('Designed with Claude Cowork · Generated in Claude Code · Grafted by a Human', FOOT),
     ]
     story.append(PageBreak())
 
@@ -1062,7 +1062,7 @@ def main():
                          'e.g. --club "Togher A.C." "Eagle A.C."')
     args = ap.parse_args()
 
-    out = args.out or 'report_charts/cork_marathon_combined.pdf'
+    out = args.out or 'report_charts/analog_devices_cork_marathon_analysis.pdf'
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
