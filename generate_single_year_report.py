@@ -53,6 +53,21 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 import numpy as np
 import pandas as pd
+try:
+    from scipy.stats import gaussian_kde
+except ImportError:
+    # Numpy-only fallback for environments without scipy
+    def gaussian_kde(data, bw_method=0.2):
+        data = np.asarray(data, dtype=float)
+        bw = np.std(data) * bw_method if np.std(data) > 0 else 1.0
+        def _eval(xs):
+            xs = np.asarray(xs, dtype=float)
+            d = np.zeros_like(xs)
+            for xi in data:
+                d += np.exp(-0.5 * ((xs - xi) / bw) ** 2)
+            return d / (len(data) * bw * np.sqrt(2 * np.pi))
+        return type('KDE', (), {'__call__': staticmethod(_eval)})()
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -1313,7 +1328,6 @@ def build_pdf(df, year, out_path, club_name=None):
     story.append(Spacer(1, 0.2*cm))
     img = chart_top_clubs(df, '10K')
     if img: story.append(img)
-    story.append(PageBreak())
 
     # ── CLUB DEEP DIVE (optional, one or more clubs) ──────────────────────────
     if club_name:
@@ -1450,6 +1464,179 @@ def chart_club_gender_per_race(df, club_name):
     return fig_to_image(fig, width_cm=7)
 
 
+# ── Club: age × race heatmap (all finishers) ─────────────────────────────────
+def chart_club_age_by_race_heatmap(df, club_name):
+    """Heatmap: age groups (rows) × races (cols), colour = finisher count."""
+    sub = df[df['club'].str.strip() == club_name].copy()
+    sub['decade'] = sub['ag'].map(DECADE_MAP)
+    race_labels = {'Full': 'Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+
+    matrix = pd.DataFrame(
+        [[len(sub[(sub['decade'] == d) & (sub['race'] == r)]) for r in RACES]
+         for d in DECADES],
+        index=DECADES, columns=[race_labels[r] for r in RACES]
+    )
+    # Drop rows that are all zero
+    matrix = matrix.loc[(matrix > 0).any(axis=1)]
+    if matrix.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(6, max(3, len(matrix) * 0.45)))
+    vmax = max(matrix.values.max(), 1)
+    im = ax.imshow(matrix.values, aspect='auto', cmap='Greens', vmin=0, vmax=vmax)
+    ax.set_xticks(range(3)); ax.set_xticklabels(matrix.columns, fontsize=9)
+    ax.set_yticks(range(len(matrix))); ax.set_yticklabels(matrix.index, fontsize=8)
+    threshold = vmax * 0.55
+    for i in range(len(matrix)):
+        for j in range(3):
+            val = matrix.iloc[i, j]
+            if val > 0:
+                tc = 'white' if val >= threshold else '#333333'
+                ax.text(j, i, str(val), ha='center', va='center',
+                        fontsize=8, color=tc, fontweight='bold' if val >= threshold else 'normal')
+    ax.set_xticks(np.arange(-0.5, 3), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(matrix)), minor=True)
+    ax.grid(which='minor', color='white', linewidth=1)
+    ax.tick_params(which='minor', length=0)
+    fig.colorbar(im, ax=ax, shrink=0.6).ax.tick_params(labelsize=7)
+    ax.set_title('Headcount by Age Group and Race', fontsize=10, fontweight='bold', pad=6)
+    fig.tight_layout()
+    return fig_to_image(fig, width_cm=8)
+
+
+# ── Club: age × race heatmap split by gender ─────────────────────────────────
+def chart_club_age_by_race_gender_heatmap(df, club_name):
+    """Side-by-side heatmaps: age groups × races for Male and Female."""
+    sub = df[df['club'].str.strip() == club_name].copy()
+    sub['decade'] = sub['ag'].map(DECADE_MAP)
+    race_labels = {'Full': 'Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+    cols = [race_labels[r] for r in RACES]
+
+    def make_mat(sex):
+        return pd.DataFrame(
+            [[len(sub[(sub['decade']==d) & (sub['race']==r) & (sub['sex']==sex)])
+              for r in RACES] for d in DECADES],
+            index=DECADES, columns=cols
+        )
+
+    m_mat = make_mat('M')
+    f_mat = make_mat('F')
+    # Keep only rows with at least one entry across both
+    active = (m_mat + f_mat).loc[(m_mat + f_mat > 0).any(axis=1)].index
+    m_mat = m_mat.loc[active]; f_mat = f_mat.loc[active]
+    if m_mat.empty:
+        return None
+
+    vmax = max(max(m_mat.values.max(), f_mat.values.max()), 1)
+    fig_h = max(3, len(m_mat) * 0.45)
+    fig, (ax_m, ax_f) = plt.subplots(1, 2, figsize=(11, fig_h), sharey=True)
+
+    for ax, mat, cmap, title in [
+        (ax_m, m_mat, 'Blues', 'Male'),
+        (ax_f, f_mat, 'RdPu',  'Female'),
+    ]:
+        im = ax.imshow(mat.values, aspect='auto', cmap=cmap, vmin=0, vmax=vmax)
+        ax.set_xticks(range(3)); ax.set_xticklabels(mat.columns, fontsize=8)
+        ax.set_yticks(range(len(mat))); ax.set_yticklabels(mat.index, fontsize=8)
+        threshold = vmax * 0.55
+        for i in range(len(mat)):
+            for j in range(3):
+                val = mat.iloc[i, j]
+                if val > 0:
+                    tc = 'white' if val >= threshold else '#333333'
+                    ax.text(j, i, str(val), ha='center', va='center',
+                            fontsize=8, color=tc, fontweight='bold' if val >= threshold else 'normal')
+        ax.set_xticks(np.arange(-0.5, 3), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(mat)), minor=True)
+        ax.grid(which='minor', color='white', linewidth=1)
+        ax.tick_params(which='minor', length=0)
+        ax.set_title(title, fontsize=10, fontweight='bold', pad=6)
+        fig.colorbar(im, ax=ax, shrink=0.6).ax.tick_params(labelsize=7)
+
+    fig.suptitle('Headcount by Age Group, Race and Gender',
+                 fontsize=10, fontweight='bold', y=1.01)
+    fig.tight_layout()
+    return fig_to_image(fig, width_cm=14)
+
+
+# ── Club: finish time KDE by race ─────────────────────────────────────────────
+def chart_club_kde_by_race(df, club_name):
+    """
+    KDE of finish times per race: club (green solid) vs full field (grey dashed).
+    KDE is smoother than a histogram for small club sample sizes.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(14, 3.8))
+    race_labels = {'Full': 'Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+
+    for ax, race in zip(axes, RACES):
+        field = df[df['race'] == race]['sec'] / 60
+        club  = df[(df['race'] == race) & (df['club'].str.strip() == club_name)]['sec'] / 60
+        if len(club) < 3:
+            ax.text(0.5, 0.5, 'Insufficient data', ha='center', va='center',
+                    transform=ax.transAxes, fontsize=9, color='grey')
+            ax.set_title(race_labels[race], fontsize=10, fontweight='bold')
+            continue
+
+        x_min = field.min(); x_max = field.max()
+        xs = np.linspace(x_min, x_max, 300)
+
+        kde_field = gaussian_kde(field, bw_method=0.15)
+        kde_club  = gaussian_kde(club,  bw_method=0.25)
+
+        ax.fill_between(xs, kde_field(xs), color='#CCCCCC', alpha=0.5, label='Full field')
+        ax.plot(xs, kde_club(xs),  color=C_GREEN, linewidth=2.5, label=club_name)
+        ax.axvline(field.median(), color='#999999', linestyle='--', linewidth=1, alpha=0.8)
+        ax.axvline(club.median(),  color=C_GREEN,   linestyle='--', linewidth=1.5)
+
+        ax.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda v, _: f"{int(v)//60}:{int(v)%60:02d}"))
+        ax.tick_params(axis='x', labelrotation=40, labelsize=7)
+        style_ax(ax, title=race_labels[race], ylabel='Density' if race=='Full' else '')
+        if race == 'Full':
+            ax.legend(fontsize=8)
+
+    fig.suptitle('Finish Time Distribution (KDE) — Club vs Field',
+                 fontsize=12, fontweight='bold', y=1.02)
+    fig.tight_layout()
+    return fig_to_image(fig, width_cm=16)
+
+
+# ── Club: finish time KDE by race, split by gender ───────────────────────────
+def chart_club_kde_by_race_gender(df, club_name):
+    """KDE per race with M (blue) and F (pink) overlaid. Grey = full field."""
+    fig, axes = plt.subplots(1, 3, figsize=(14, 3.8))
+    race_labels = {'Full': 'Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+
+    for ax, race in zip(axes, RACES):
+        field = df[df['race'] == race]['sec'] / 60
+        x_min = field.quantile(0.01); x_max = field.quantile(0.99)
+        xs = np.linspace(x_min, x_max, 300)
+
+        # Full field background
+        kde_field = gaussian_kde(field, bw_method=0.15)
+        ax.fill_between(xs, kde_field(xs), color='#EEEEEE', alpha=0.8, label='Full field')
+
+        for sex, col, lbl in [('M', C_BLUE, 'Male'), ('F', C_PINK, 'Female')]:
+            club_sex = df[(df['race']==race) & (df['club'].str.strip()==club_name) &
+                         (df['sex']==sex)]['sec'] / 60
+            if len(club_sex) >= 3:
+                kde = gaussian_kde(club_sex, bw_method=0.3)
+                ax.plot(xs, kde(xs), color=col, linewidth=2.5, label=lbl)
+                ax.axvline(club_sex.median(), color=col, linestyle=':', linewidth=1.5)
+
+        ax.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda v, _: f"{int(v)//60}:{int(v)%60:02d}"))
+        ax.tick_params(axis='x', labelrotation=40, labelsize=7)
+        style_ax(ax, title=race_labels[race], ylabel='Density' if race=='Full' else '')
+        if race == 'Full':
+            ax.legend(fontsize=8)
+
+    fig.suptitle('Finish Time Distribution by Gender (KDE)',
+                 fontsize=12, fontweight='bold', y=1.02)
+    fig.tight_layout()
+    return fig_to_image(fig, width_cm=16)
+
+
 def build_club_section(df, club_name, year, story, styles):
     """Append club deep dive pages to story. No athlete names used anywhere."""
     SEC, SUBSEC, BODY, BODYR, BODYCB, BODYCB2, CT, HR = (
@@ -1517,6 +1704,7 @@ def build_club_section(df, club_name, year, story, styles):
         return f"{pct:.0f}%"
 
     # ── PAGE 1: Club Overview ─────────────────────────────────────────────────
+    story.append(PageBreak())
     story.append(HR())
     story.append(Paragraph(f'Club Deep Dive: {club_name}', SEC))
     story.append(Paragraph(f'{year} Race Results — Anonymised Analysis', SUBSEC))
@@ -1565,6 +1753,17 @@ def build_club_section(df, club_name, year, story, styles):
                      colWidths=[7.2*cm, 0.4*cm, 9*cm])
         pair.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
         story.append(pair)
+
+    story.append(Spacer(1, 0.4*cm))
+
+    # Heatmaps: age × race (combined) + age × race × gender side by side
+    img_h1 = chart_club_age_by_race_heatmap(df, club_name)
+    img_h2 = chart_club_age_by_race_gender_heatmap(df, club_name)
+    if img_h1:
+        story.append(img_h1)
+        story.append(Spacer(1, 0.3*cm))
+    if img_h2:
+        story.append(img_h2)
 
     # ── PAGES 2+: Per race ────────────────────────────────────────────────────
     for race in RACES:
@@ -1621,6 +1820,24 @@ def build_club_section(df, club_name, year, story, styles):
         img = chart_club_age_breakdown(df, club_name, race=race)
         if img:
             story.append(img)
+
+    # ── KDE finish time pages ─────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(HR())
+    story.append(Paragraph(f'{club_name} — Finish Time Analysis', SEC))
+    story.append(Paragraph(
+        'Kernel density estimate (KDE) — smoother than a histogram for club-sized samples. '
+        'Dashed lines mark median times.', SUBSEC))
+    story.append(Spacer(1, 0.2*cm))
+
+    img = chart_club_kde_by_race(df, club_name)
+    if img:
+        story.append(img)
+        story.append(Spacer(1, 0.4*cm))
+
+    img = chart_club_kde_by_race_gender(df, club_name)
+    if img:
+        story.append(img)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
