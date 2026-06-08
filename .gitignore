@@ -43,6 +43,7 @@ env/
 
 # Project-specific
 report_charts/*.pdf
+report_charts/backup/
 PROMPT.md
 .env
 back_up_reports/
