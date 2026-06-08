@@ -181,6 +181,6 @@ Analysis report generator for Analog Devices Cork City Marathon 2024–2026.
 
 ## Credits
 
-- Designed with [Claude Cowork](https://claude.ai)
-- Generated in [Claude Code](https://claude.ai/code)
-- Grafted by a Human
+- Report design using [Claude Cowork](https://claude.ai)
+- Code generated using [Claude Code](https://claude.ai/code)
+- Crafted by Humans

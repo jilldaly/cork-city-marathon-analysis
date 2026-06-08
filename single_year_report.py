@@ -1095,7 +1095,7 @@ def build_pdf(df, year, out_path, club_name=None):
     # Gender split chart
     story.append(chart_gender_split(df, year))
     story.append(Spacer(1, 0.4*cm))
-    story.append(Paragraph('Designed with Claude Cowork · Generated in Claude Code · Grafted by a Human', FOOT))
+    story.append(Paragraph('Report design using Claude Cowork · Code generated using Claude Code · Crafted by Humans', FOOT))
     story.append(PageBreak())
 
     # ── PAGES 2-4: PER-RACE ───────────────────────────────────────────────────

@@ -825,7 +825,7 @@ def build_combined_pdf(df_latest: pd.DataFrame, df_all: pd.DataFrame,
     story.append(toc)
     story += [
         Spacer(1, 0.6*cm),
-        Paragraph('Designed with Claude Cowork · Generated in Claude Code · Grafted by a Human', FOOT),
+        Paragraph('Report design using Claude Cowork · Code generated using Claude Code · Crafted by Humans', FOOT),
     ]
     story.append(PageBreak())
 
