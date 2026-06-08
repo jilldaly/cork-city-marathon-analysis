@@ -173,11 +173,7 @@ cork_city_marathon_2026/
 
 ## License
 
-Data sourced from official Cork City Marathon timing results.
-
-## Author
-
-Analysis report generator for Analog Devices Cork City Marathon 2024–2026.
+Data sourced from official Cork City Marathon timing results. Race results are public information published by the race organisers; the source PDFs in this repo contain athlete names and finish times as originally released.
 
 ## Credits
 

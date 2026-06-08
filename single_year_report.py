@@ -1936,6 +1936,8 @@ def main():
                     help='One or more club names for deep dive sections, '
                          'e.g. --club "Togher A.C." "Eagle A.C."')
     args = ap.parse_args()
+    if args.year not in PDF_FILES:
+        sys.exit(f"ERROR: year {args.year} not supported. Supported: {sorted(PDF_FILES)}")
 
     out = args.out or f'report_charts/cork_marathon_{args.year}_single.pdf'
     os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
