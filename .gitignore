@@ -43,6 +43,7 @@ env/
 
 # Project-specific
 report_charts/*.pdf
+!report_charts/analog_devices_cork_marathon_analysis.pdf
 report_charts/backup/
 PROMPT.md
 .env
