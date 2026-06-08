@@ -1,10 +1,10 @@
 # Cork City Marathon Analysis Report Generator
 
-A Python-based report generator for the Analog Devices Cork City Marathon, producing detailed PDF analysis reports of race results from 2024–2026.
+A Python-based report generator for the Cork City Marathon, producing detailed PDF analysis reports of race results from 2024–2026.
 
 ## Features
 
-### Combined Report (`generate_combined_report.py`) — recommended
+### Combined Report (`combined_report.py`) — recommended
 - **Cover page** with title and section contents
 - **Section 1 — Overall Marathon Analysis** (latest year):
   - Summary table and gender split chart
@@ -33,7 +33,7 @@ A Python-based report generator for the Analog Devices Cork City Marathon, produ
   - Club trend: multi-year participation and median time trends
   - **Finish Time Analysis + Key Insights** (always last): KDE curves vs field, gender KDE split, auto-generated club insights
 
-### Single-Year Report (`generate_single_year_report.py`)
+### Single-Year Report (`single_year_report.py`)
 - Cover page with summary table and gender split
 - Per-race sections (Marathon, Half Marathon, 10K):
   - Key statistics tables with colour-coded fastest/median times
@@ -42,9 +42,24 @@ A Python-based report generator for the Analog Devices Cork City Marathon, produ
 - Club analysis: affiliation rates, word cloud, Venn diagram, team performance, heatmaps, top clubs
 - **Optional club deep dive** (`--club`): overview, per-race stats, KDE finish time analysis, key insights
 
-### Multi-Year Report (`generate_report.py`)
+### Multi-Year Report (`trends_report.py`)
 - Participation and finish-time trends across 2024–2026
 - Age-group breakdowns and club word cloud
+
+## Running Tests
+
+Tests use synthetic data — no race PDFs required.
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+To run a specific test file:
+```bash
+pytest tests/test_parsing.py -v
+pytest tests/test_insights.py::TestInsightsBoxplot::test_sparse_data_does_not_raise_unbound_local_error -v
+```
 
 ## Requirements
 
@@ -64,17 +79,17 @@ Key packages: `matplotlib`, `pandas`, `reportlab`, `numpy`, `scipy`, `wordcloud`
 ```
 data/cork/
 ├── 2024/
-│   ├── 02ResultsResults_full.pdf
-│   ├── 02ResultsResults_half.pdf
-│   └── 02ResultsResults_10k.pdf
+│   ├── results_full.pdf
+│   ├── results_half.pdf
+│   └── results_10k.pdf
 ├── 2025/
-│   ├── cc_results_full_2025.pdf
-│   ├── 02ResultsResults_half.pdf
-│   └── 02ResultsResults_10k.pdf
+│   ├── results_full.pdf
+│   ├── results_half.pdf
+│   └── results_10k.pdf
 └── 2026/
-    ├── ResultListsPURFullResults.pdf
-    ├── ResultListsPURFullResults_half.pdf
-    └── ResultListsPURFullResults10km.pdf
+    ├── results_full.pdf
+    ├── results_half.pdf
+    └── results_10k.pdf
 ```
 
 ## Usage
@@ -83,14 +98,14 @@ data/cork/
 
 ```bash
 # Full report, latest year
-python generate_combined_report.py
+python combined_report.py
 
 # With one or more club deep dives
-python generate_combined_report.py --club "Togher A.C."
-python generate_combined_report.py --club "Togher A.C." "Eagle A.C." "Leevale A.C."
+python combined_report.py --club "Togher A.C."
+python combined_report.py --club "Togher A.C." "Eagle A.C." "Leevale A.C."
 
 # Custom year or output path
-python generate_combined_report.py --year 2025 --out report_charts/combined_2025.pdf
+python combined_report.py --year 2025 --out report_charts/combined_2025.pdf
 ```
 
 Options:
@@ -102,9 +117,9 @@ Options:
 ### Single-Year Report
 
 ```bash
-python generate_single_year_report.py --year 2026
-python generate_single_year_report.py --year 2026 --club "Togher A.C." "Eagle A.C."
-python generate_single_year_report.py --year 2026 --club "Eagle A.C." --out report_charts/eagle_2026.pdf
+python single_year_report.py --year 2026
+python single_year_report.py --year 2026 --club "Togher A.C." "Eagle A.C."
+python single_year_report.py --year 2026 --club "Eagle A.C." --out report_charts/eagle_2026.pdf
 ```
 
 Options:
@@ -118,19 +133,26 @@ Club names use fuzzy matching — minor spelling differences are handled. If no 
 ### Multi-Year Report
 
 ```bash
-python generate_report.py
-python generate_report.py --data data/cork --out report_charts/analysis.pdf
+python trends_report.py
+python trends_report.py --data data/cork --out report_charts/analysis.pdf
 ```
 
 ## Project Structure
 
 ```
 cork_city_marathon_2026/
-├── generate_combined_report.py     # Combined report (recommended)
-├── generate_single_year_report.py  # Single-year report + shared chart functions
-├── generate_report.py              # Standalone multi-year trend report
-├── requirements.txt                # Python dependencies
-├── data/cork/                      # Race result PDFs (not committed)
+├── combined_report.py     # Combined report (recommended)
+├── single_year_report.py  # Single-year report + shared chart functions
+├── trends_report.py              # Standalone multi-year trend report
+├── requirements.txt                # Runtime Python dependencies
+├── requirements-dev.txt            # Dev dependencies (pytest)
+├── tests/                          # Test suite (no PDFs required)
+│   ├── conftest.py
+│   ├── test_parsing.py
+│   ├── test_stats.py
+│   ├── test_insights.py
+│   └── test_charts.py
+├── data/cork/                      # Race result PDFs (committed for reproducibility)
 ├── report_charts/                  # Generated PDF reports
 └── README.md
 ```
