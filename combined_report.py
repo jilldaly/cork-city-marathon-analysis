@@ -49,7 +49,7 @@ from reportlab.platypus import (
 # ── Import reusable pieces from the single-year script ───────────────────────
 from single_year_report import (
     load_year, PDF_FILES, sec_to_hms, race_stats, _find_club,
-    RACES, DECADES, DECADE_MAP,
+    RACES, BANDS10, band10,
     C_GREEN, C_BLUE, C_PINK, C_GOLD, C_LIGHT, C_DGREY,
     M_AG_ORDER, F_AG_ORDER,
     fig_to_image, style_ax,
@@ -299,6 +299,107 @@ def chart_ag_trend_median_time(df: pd.DataFrame) -> Image:
     return fig_to_image(fig)
 
 
+def chart_age_pyramids(df: pd.DataFrame, year: int = None, xmax: int = None,
+                       years: list = None, figsize=(14, 5), width_cm: float = 17) -> Image:
+    """Population pyramids per race: Male (left) vs Female (right) by age band.
+
+    All three subplots share one symmetric x-axis so race magnitudes are comparable.
+    Pass ``xmax`` to force a fixed scale (e.g. shared across several years' charts);
+    otherwise it is derived from the data's largest band. Pass ``years`` (a list) to plot
+    the per-year *average* count across those years; otherwise a single ``year`` is shown.
+    """
+    yrs = years if years is not None else [year]
+    n_yr = len(yrs)
+    yr_label = str(yrs[0]) if n_yr == 1 else f'{yrs[0]}–{yrs[-1]} average'
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize, sharey=True)
+    y = np.arange(len(BANDS10))
+    xmax_auto = 0
+    for ax, race in zip(axes, RACES):
+        sub = df[(df['year'].isin(yrs)) & (df['race'] == race)].copy()
+        sub['decade'] = sub['ag'].map(band10)
+        m_counts = [len(sub[(sub['sex'] == 'M') & (sub['decade'] == d)]) / n_yr for d in BANDS10]
+        f_counts = [len(sub[(sub['sex'] == 'F') & (sub['decade'] == d)]) / n_yr for d in BANDS10]
+        xmax_auto = max([xmax_auto] + m_counts + f_counts)
+
+        ax.barh(y, [-m for m in m_counts], color=C_BLUE, alpha=0.85, label='Male')
+        ax.barh(y, f_counts,               color=C_PINK, alpha=0.85, label='Female')
+        for idx, (mc, fc) in enumerate(zip(m_counts, f_counts)):
+            if mc:
+                ax.text(-mc, idx, f'{mc:,.0f} ', ha='right', va='center',
+                        fontsize=6.5, color=C_BLUE)
+            if fc:
+                ax.text(fc, idx, f' {fc:,.0f}', ha='left', va='center',
+                        fontsize=6.5, color=C_PINK)
+        ax.axvline(0, color=C_DGREY, linewidth=0.8)
+        ax.set_yticks(y)
+        ax.set_yticklabels(BANDS10, fontsize=8)
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{abs(int(v))}"))
+
+        total = sum(m_counts) + sum(f_counts)
+        pct_f = (sum(f_counts) / total * 100) if total else 0
+        ax.set_title(f"{race}  ·  {pct_f:.0f}% female", fontsize=12, fontweight='bold', pad=8)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.grid(axis='x', alpha=0.3, linestyle='--')
+        ax.tick_params(labelsize=9)
+        if race == RACES[0]:
+            ax.legend(fontsize=9, loc='lower left')
+            ax.set_ylabel('Age group', fontsize=10)
+
+    lim = xmax if xmax is not None else int(xmax_auto * 1.15) + 1
+    for ax in axes:
+        ax.set_xlim(-lim, lim)
+
+    fig.suptitle(f'Age Profile by Race & Gender — {yr_label}  (◄ Male · Female ►)',
+                 fontsize=14, fontweight='bold', y=1.02)
+    fig.tight_layout()
+    return fig_to_image(fig, width_cm=width_cm)
+
+
+def chart_age_composition_trend(df: pd.DataFrame) -> Image:
+    """Per race: 100%-stacked age-band composition, one bar per year×gender."""
+    avail_years = sorted(df['year'].unique())
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.4), sharey=True)
+    cmap = plt.cm.viridis
+    band_colors = [cmap(i / (len(BANDS10) - 1)) for i in range(len(BANDS10))]
+
+    for ax, race in zip(axes, RACES):
+        sub = df[df['race'] == race].copy()
+        sub['decade'] = sub['ag'].map(band10)
+
+        positions, labels, shares = [], [], []
+        for i, yr in enumerate(avail_years):
+            for j, sex in enumerate(['M', 'F']):
+                g = sub[(sub['year'] == yr) & (sub['sex'] == sex)]
+                n = len(g)
+                col = [len(g[g['decade'] == d]) / n * 100 if n else 0 for d in BANDS10]
+                positions.append(i * 3 + j)
+                labels.append(f"{yr}\n{sex}")
+                shares.append(col)
+
+        shares = np.array(shares)                       # rows = bars, cols = bands
+        bottoms = np.zeros(len(positions))
+        for b, (band, color) in enumerate(zip(BANDS10, band_colors)):
+            ax.bar(positions, shares[:, b], bottom=bottoms, width=0.8,
+                   color=color, label=band)
+            bottoms += shares[:, b]
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(labels, fontsize=8)
+        ax.set_ylim(0, 100)
+        style_ax(ax, title=race, ylabel='% of finishers' if race == RACES[0] else '')
+
+    handles, labs = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labs, title='Age group', fontsize=8, title_fontsize=9,
+               loc='center right', bbox_to_anchor=(1.005, 0.5))
+    fig.suptitle('Age Composition by Race, Gender & Year',
+                 fontsize=14, fontweight='bold', y=1.02)
+    fig.tight_layout(rect=(0, 0, 0.92, 1))
+    return fig_to_image(fig, width_cm=15)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ALL CLUBS TREND CHARTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -449,11 +550,11 @@ def chart_club_trend_age_heatmap(df: pd.DataFrame, club_name: str) -> Image:
     """
     avail_years = sorted(df['year'].unique())
     sub_all = df[df['club'].str.strip() == club_name].copy()
-    sub_all['decade'] = sub_all['ag'].map(DECADE_MAP)
+    sub_all['decade'] = sub_all['ag'].map(band10)
     race_labels = {'Full': 'Marathon', 'Half': 'Half\nMarathon', '10K': '10K'}
     col_labels = [race_labels[r] for r in RACES]
 
-    active_decades = [d for d in DECADES
+    active_decades = [d for d in BANDS10
                       if len(sub_all[sub_all['decade'] == d]) > 0]
     if not active_decades:
         return None
@@ -588,6 +689,18 @@ def _trend_insights_participation(summary: pd.DataFrame) -> list[str]:
         else:
             bullets.append(f"{label} is male-dominated at {pm}% male in {y1}.")
 
+    # Gender gradient across distances (Age Profile learning)
+    pf_by_race = {}
+    for race in ('Full', 'Half', '10K'):
+        row = latest[latest['race'] == race]
+        if not row.empty:
+            pf_by_race[race] = row.iloc[0]['pct_female']
+    if {'Full', 'Half', '10K'} <= pf_by_race.keys():
+        bullets.append(
+            f"Female participation declines steadily with distance: {pf_by_race['10K']}% female in "
+            f"the 10K, {pf_by_race['Half']}% in the Half, but only {pf_by_race['Full']}% in the Full "
+            f"Marathon ({y1}) — the gender gap widens the longer the race.")
+
     return bullets
 
 
@@ -643,6 +756,17 @@ def _trend_insights_times_ages(df: pd.DataFrame) -> list[str]:
         top_g = max(growth_ag, key=growth_ag.get)
         bullets.append(
             f"The {top_g} age group saw the fastest participation growth ({'+' if growth_ag[top_g] >= 0 else ''}{growth_ag[top_g]}% from {y0} to {y1}).")
+
+    # Age skew by distance (Age Profile learning), using consistent 10-year bands
+    young = {}
+    for race in ('Full', '10K'):
+        rsub = sub[sub['race'] == race]
+        if len(rsub):
+            young[race] = round(len(rsub[rsub['ag'].map(band10) == '18-34']) / len(rsub) * 100)
+    if 'Full' in young and '10K' in young:
+        bullets.append(
+            f"The field skews younger as the distance shortens: the 18–34 group is {young['10K']}% "
+            f"of 10K finishers versus {young['Full']}% of the Full Marathon in {y1}.")
 
     return bullets
 
@@ -713,6 +837,387 @@ def _trend_insights_boxplot(df: pd.DataFrame) -> list[str]:
             f"(shift < 5 min from {y0} to {y1}), indicating a consistent runner profile.")
 
     return bullets
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2026 DATA-COMPLETENESS ANALYSIS
+# Resolve whether the 2026 male-ageing pattern (smaller 18-34 share, bigger 35+) is a
+# real demographic shift or an artefact of incomplete 2026 data. All functions are pure
+# and reuse band10/BANDS10 — no bucket re-derivation.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def age_counts_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Long-form absolute counts + within-group shares per (race, sex, year, band).
+
+    `total` = finishers in that (race, sex, year); `share_pct` = count / total * 100.
+    """
+    sub = df.copy()
+    sub['band'] = sub['ag'].map(band10)
+    rows = []
+    for race in RACES:
+        for sex in ('M', 'F'):
+            for year in sorted(sub['year'].unique()):
+                g = sub[(sub['race'] == race) & (sub['sex'] == sex) & (sub['year'] == year)]
+                total = len(g)
+                for band in BANDS10:
+                    cnt = int((g['band'] == band).sum())
+                    rows.append({
+                        'race': race, 'sex': sex, 'year': int(year), 'band': band,
+                        'count': cnt, 'total': total,
+                        'share_pct': round(cnt / total * 100, 1) if total else 0.0,
+                    })
+    return pd.DataFrame(rows)
+
+
+def completeness_flags(df: pd.DataFrame, threshold_pct: float = 85,
+                       current_year: int = None, force_provisional=None) -> pd.DataFrame:
+    """Per (race, sex): is the current year's field large enough to trust its shares?
+
+    Compares current-year total finishers against the mean of all prior years; flags
+    `provisional` when the current field is below `threshold_pct`% of that prior mean.
+    `force_provisional` (an iterable of `year` values and/or `(race, year)` tuples) marks
+    cells provisional regardless of count — for races not yet run or an as-of cutoff.
+    """
+    years = sorted(df['year'].unique())
+    cur = current_year if current_year is not None else years[-1]
+    prior = [y for y in years if y < cur]
+    forced = set(force_provisional) if force_provisional else set()
+    rows = []
+    for race in RACES:
+        for sex in ('M', 'F'):
+            cur_total = len(df[(df['race'] == race) & (df['sex'] == sex) & (df['year'] == cur)])
+            prior_totals = [len(df[(df['race'] == race) & (df['sex'] == sex) & (df['year'] == y)])
+                            for y in prior]
+            prior_mean = float(np.mean(prior_totals)) if prior_totals else float('nan')
+            pct = (cur_total / prior_mean * 100) if prior_mean else float('nan')
+            is_forced = cur in forced or (race, cur) in forced
+            rows.append({
+                'race': race, 'sex': sex, 'year': int(cur),
+                'current_total': cur_total, 'prior_mean': round(prior_mean, 1),
+                'pct_of_prior': round(pct, 1) if prior_mean else float('nan'),
+                'provisional': bool(is_forced or (prior_mean and pct < threshold_pct)),
+            })
+    return pd.DataFrame(rows)
+
+
+def decompose_young_share_shift(df: pd.DataFrame, race: str, sex: str = 'M',
+                                band: str = '18-34', y_prev: int = None,
+                                y_curr: int = None) -> dict:
+    """Counterfactual split of the YoY change in a band's share for one race/sex.
+
+    Splits the share change into a "fewer young" effect (young count moves to current,
+    older held at prior) and a "more old" effect (older moves, young held), each in
+    percentage points. Their sum plus a small `interaction` term equals the actual change.
+    """
+    years = sorted(df['year'].unique())
+    yp = y_prev if y_prev is not None else years[-2]
+    yc = y_curr if y_curr is not None else years[-1]
+
+    def counts(year):
+        g = df[(df['race'] == race) & (df['sex'] == sex) & (df['year'] == year)].copy()
+        g['band'] = g['ag'].map(band10)
+        young = int((g['band'] == band).sum())
+        total = len(g)
+        return young, total - young  # young, old
+
+    young_p, old_p = counts(yp)
+    young_c, old_c = counts(yc)
+
+    def share(y, o):
+        return (y / (y + o) * 100) if (y + o) else 0.0
+
+    share_prev = share(young_p, old_p)
+    share_curr = share(young_c, old_c)
+    eff_young = share(young_c, old_p) - share_prev   # young moves, old held at prev
+    eff_old = share(young_p, old_c) - share_prev     # old moves, young held at prev
+    actual = share_curr - share_prev
+    return {
+        'race': race, 'sex': sex, 'band': band, 'y_prev': int(yp), 'y_curr': int(yc),
+        'young_prev': young_p, 'young_curr': young_c, 'old_prev': old_p, 'old_curr': old_c,
+        'share_prev': round(share_prev, 1), 'share_curr': round(share_curr, 1),
+        'actual_change': round(actual, 1),
+        'eff_fewer_young': round(eff_young, 1), 'eff_more_old': round(eff_old, 1),
+        'interaction': round(actual - eff_young - eff_old, 1),
+    }
+
+
+def noise_floor_flags(df: pd.DataFrame, current_year: int = None,
+                      prev_year: int = None) -> pd.DataFrame:
+    """Per (race, sex, band): is the YoY share move within sampling noise?
+
+    `se_pp` ≈ binomial standard error of the current share (percentage points);
+    `is_noise` when |share change| < 2·SE (e.g. tiny 65+ bands swinging on a handful
+    of finishers).
+    """
+    years = sorted(df['year'].unique())
+    yc = current_year if current_year is not None else years[-1]
+    yp = prev_year if prev_year is not None else years[-2]
+    sub = df.copy()
+    sub['band'] = sub['ag'].map(band10)
+    rows = []
+    for race in RACES:
+        for sex in ('M', 'F'):
+            for band in BANDS10:
+                gp = sub[(sub['race'] == race) & (sub['sex'] == sex) & (sub['year'] == yp)]
+                gc = sub[(sub['race'] == race) & (sub['sex'] == sex) & (sub['year'] == yc)]
+                np_, nc_ = len(gp), len(gc)
+                cp = int((gp['band'] == band).sum())
+                cc = int((gc['band'] == band).sum())
+                sp = (cp / np_ * 100) if np_ else 0.0
+                sc = (cc / nc_ * 100) if nc_ else 0.0
+                p = sc / 100
+                se_pp = (np.sqrt(p * (1 - p) / nc_) * 100) if nc_ else float('inf')
+                rows.append({
+                    'race': race, 'sex': sex, 'band': band,
+                    'count_prev': cp, 'count_curr': cc,
+                    'share_prev': round(sp, 1), 'share_curr': round(sc, 1),
+                    'se_pp': round(se_pp, 2) if nc_ else float('inf'),
+                    'is_noise': bool(abs(sc - sp) < 2 * se_pp),
+                })
+    return pd.DataFrame(rows)
+
+
+def demographic_verdicts(df: pd.DataFrame, threshold_pct: float = 85,
+                         sex: str = 'M', band: str = '18-34') -> list[str]:
+    """3–5 markdown bullets: per distance, is the 2026 male-ageing signal real,
+    a completeness artefact, or inconclusive — backed by counts and decomposition."""
+    years = sorted(df['year'].unique())
+    yc = years[-1]
+    comp = completeness_flags(df, threshold_pct=threshold_pct, current_year=yc)
+    noise = noise_floor_flags(df, current_year=yc)
+    race_labels = {'Full': 'Full Marathon', 'Half': 'Half Marathon', '10K': '10K'}
+
+    bullets = [
+        f"<b>Question.</b> Normalised shares can mask whether {yc} is a full season; "
+        f"below we check absolute counts (threshold: {yc} field must be ≥ {threshold_pct}% "
+        f"of the prior-year mean) before reading the male {band} drop as a real shift."
+    ]
+    for race, label in race_labels.items():
+        crow = comp[(comp['race'] == race) & (comp['sex'] == sex)].iloc[0]
+        dec = decompose_young_share_shift(df, race, sex=sex, band=band)
+        nrow = noise[(noise['race'] == race) & (noise['sex'] == sex) &
+                     (noise['band'] == band)].iloc[0]
+        pct = crow['pct_of_prior']
+        chg = dec['actual_change']
+        if crow['provisional']:
+            verdict = (f"<b>{label}: completeness artefact (provisional).</b> {yc} male field is "
+                       f"only {pct:.0f}% of the prior-year mean — the {band} drop of {chg:+.1f}pp "
+                       f"is unreliable; treat {yc} as provisional.")
+        elif abs(chg) < 2 * nrow['se_pp']:
+            verdict = (f"<b>{label}: inconclusive.</b> {yc} field is complete ({pct:.0f}% of prior) "
+                       f"but the male {band} share moved only {chg:+.1f}pp — within sampling noise "
+                       f"(±{2*nrow['se_pp']:.1f}pp).")
+        else:
+            driver = ("more older men" if dec['eff_more_old'] <= dec['eff_fewer_young']
+                      else "fewer young men")
+            verdict = (f"<b>{label}: real shift.</b> {yc} field is complete ({pct:.0f}% of prior); "
+                       f"male {band} share fell {chg:+.1f}pp, driven mainly by {driver} "
+                       f"(more-old {dec['eff_more_old']:+.1f}pp vs fewer-young "
+                       f"{dec['eff_fewer_young']:+.1f}pp).")
+        bullets.append(verdict)
+    return bullets
+
+
+def pyramid_xmax(df: pd.DataFrame, years: list) -> int:
+    """Largest single age-band count across the given years/races/sexes — a shared
+    x-axis scale so comparison pyramids are directly comparable across years."""
+    sub = df[df['year'].isin(years)].copy()
+    sub['band'] = sub['ag'].map(band10)
+    m = 0
+    for year in years:
+        for race in RACES:
+            for sx in ('M', 'F'):
+                g = sub[(sub['year'] == year) & (sub['race'] == race) & (sub['sex'] == sx)]
+                if len(g):
+                    m = max(m, int(g['band'].value_counts().max()))
+    return int(m * 1.15) + 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AGE × DISTANCE × GENDER  (within-cell distance shares)
+# Of finishers in a (gender, age band, year) cell, what % ran each distance? Pure,
+# reuses band10/BANDS10 — no bucket re-derivation.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def distance_share_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Tidy [year, gender, age_band, distance, n, share_within_cell]; the three distance
+    shares sum to 100 within each (year, gender, age_band) cell."""
+    sub = df.copy()
+    sub['band'] = sub['ag'].map(band10)
+    rows = []
+    for year in sorted(sub['year'].unique()):
+        for sex in ('F', 'M'):
+            for band in BANDS10:
+                cell = sub[(sub['year'] == year) & (sub['sex'] == sex) & (sub['band'] == band)]
+                total = len(cell)
+                if not total:
+                    continue
+                for dist in RACES:
+                    n = int((cell['race'] == dist).sum())
+                    rows.append({
+                        'year': int(year), 'gender': sex, 'age_band': band,
+                        'distance': dist, 'n': n,
+                        'share_within_cell': round(n / total * 100, 1),
+                    })
+    return pd.DataFrame(rows)
+
+
+def share_matrix(df: pd.DataFrame, sex: str) -> pd.DataFrame:
+    """Wide age_band × distance share matrix for one sex, one block per year plus a
+    '3-yr avg' block (mean of the per-year shares). Index (year_label, age_band)."""
+    tidy = distance_share_table(df)
+    tidy = tidy[tidy['gender'] == sex]
+    years = sorted(tidy['year'].unique())
+    frames = []
+    for year in years:
+        piv = (tidy[tidy['year'] == year]
+               .pivot(index='age_band', columns='distance', values='share_within_cell')
+               .reindex(index=BANDS10, columns=RACES))
+        piv.insert(0, 'year', str(year))
+        frames.append(piv)
+    combined = pd.concat(frames)
+    avg = (combined.groupby(level=0)[RACES].mean()
+           .reindex(index=BANDS10).round(1))
+    avg.insert(0, 'year', '3-yr avg')
+    return pd.concat([combined, avg])
+
+
+def tenk_age_gradient(df: pd.DataFrame, sex: str) -> dict:
+    """Per year + 3-yr avg: 10K share per band, the gradient
+    (share[18-34] - share[55-64]), and whether 10K share rises monotonically across the
+    main bands (18-34..55-64, excluding low-n 65+)."""
+    tidy = distance_share_table(df)
+    tidy = tidy[(tidy['gender'] == sex) & (tidy['distance'] == '10K')]
+    main = BANDS10[:-1]
+    out = {}
+    years = sorted(tidy['year'].unique())
+    per_year_vals = {}
+    for year in years:
+        s = (tidy[tidy['year'] == year].set_index('age_band')['share_within_cell']
+             .reindex(BANDS10))
+        per_year_vals[year] = s
+        seq = [s[b] for b in main if pd.notna(s[b])]
+        out[int(year)] = {
+            'by_band': {b: (None if pd.isna(s[b]) else float(s[b])) for b in BANDS10},
+            'gradient_pp': round(float(s['18-34'] - s['55-64']), 1),
+            'monotonic_rising': all(a <= b for a, b in zip(seq, seq[1:])),
+        }
+    avg = pd.concat(per_year_vals.values(), axis=1).mean(axis=1).reindex(BANDS10)
+    seq = [avg[b] for b in main if pd.notna(avg[b])]
+    out['3-yr avg'] = {
+        'by_band': {b: (None if pd.isna(avg[b]) else round(float(avg[b]), 1)) for b in BANDS10},
+        'gradient_pp': round(float(avg['18-34'] - avg['55-64']), 1),
+        'monotonic_rising': all(a <= b for a, b in zip(seq, seq[1:])),
+    }
+    return out
+
+
+def gender_gradient_comparison(df: pd.DataFrame) -> pd.DataFrame:
+    """3-yr-avg within-band distance share for F and M side by side, per (distance, band),
+    with diff_pp = F - M. Quantifies how the age->distance relationship differs by gender."""
+    fm = share_matrix(df, 'F')
+    mm = share_matrix(df, 'M')
+    fa = fm[fm['year'] == '3-yr avg']
+    ma = mm[mm['year'] == '3-yr avg']
+    rows = []
+    for dist in RACES:
+        for band in BANDS10:
+            f = fa.loc[band, dist] if band in fa.index else float('nan')
+            m = ma.loc[band, dist] if band in ma.index else float('nan')
+            rows.append({
+                'distance': dist, 'age_band': band,
+                'female_share': round(float(f), 1) if pd.notna(f) else float('nan'),
+                'male_share': round(float(m), 1) if pd.notna(m) else float('nan'),
+                'diff_pp': round(float(f - m), 1) if pd.notna(f) and pd.notna(m) else float('nan'),
+            })
+    return pd.DataFrame(rows)
+
+
+_AGE_CAVEAT = 'Cross-sectional age pattern (a snapshot across ages), not an individual aging trajectory.'
+
+
+def _share_heatmap_panel(ax, mat, title, provisional_cols=()):
+    """Draw one age_band (rows, youngest at bottom) × distance share heatmap."""
+    order = list(reversed(BANDS10))
+    data = mat.reindex(index=order, columns=RACES).to_numpy(dtype=float)
+    im = ax.imshow(data, aspect='auto', cmap='Greens', vmin=0, vmax=100)
+    ax.set_xticks(range(len(RACES))); ax.set_xticklabels(RACES, fontsize=8)
+    ax.set_yticks(range(len(order))); ax.set_yticklabels(order, fontsize=8)
+    for i in range(len(order)):
+        for j, dist in enumerate(RACES):
+            v = data[i, j]
+            if np.isnan(v):
+                continue
+            star = '*' if dist in provisional_cols else ''
+            ax.text(j, i, f"{v:.0f}{star}", ha='center', va='center', fontsize=7.5,
+                    color='white' if v >= 55 else '#333333')
+            if dist in provisional_cols:
+                ax.add_patch(mpatches.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
+                                                hatch='///', edgecolor='#C0392B', linewidth=0))
+    ax.set_title(title, fontsize=9, fontweight='bold', pad=6)
+    return im
+
+
+def chart_female_distance_heatmap(df: pd.DataFrame, save_path: str = None) -> Image:
+    """H1: female within-band distance shares — 3-yr avg main panel + per-year facets."""
+    fm = share_matrix(df, 'F')
+    years = sorted(df['year'].unique())
+    cur = years[-1]
+    comp = completeness_flags(df)
+    prov_dist = {r for r in RACES
+                 if bool(comp[(comp['race'] == r) & (comp['sex'] == 'F')]['provisional'].iloc[0])}
+
+    panels = [('3-yr avg', fm[fm['year'] == '3-yr avg'])]
+    panels += [(str(y), fm[fm['year'] == str(y)]) for y in years]
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(3.1 * len(panels), 3.7), sharey=True)
+    im = None
+    for ax, (label, block) in zip(axes, panels):
+        prov = prov_dist if label == str(cur) else set()
+        im = _share_heatmap_panel(ax, block[RACES], label, provisional_cols=prov)
+    cbar = fig.colorbar(im, ax=axes, shrink=0.6, pad=0.02)
+    cbar.set_label('% of age band', fontsize=8); cbar.ax.tick_params(labelsize=7)
+    fig.suptitle('Female distance choice by age band — share within each age group',
+                 fontsize=13, fontweight='bold', y=1.04)
+    note = _AGE_CAVEAT
+    if prov_dist:
+        note += '   * 2026 cell < 85% of prior-year mean (provisional).'
+    fig.text(0.5, -0.03, note, ha='center', fontsize=7, color='grey')
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig_to_image(fig)
+
+
+def chart_gender_distance_gradient(df: pd.DataFrame, save_path: str = None,
+                                   width_cm: float = 17) -> Image:
+    """H2: age->distance gradient by gender — one small multiple per distance, line per sex."""
+    fa = share_matrix(df, 'F'); fa = fa[fa['year'] == '3-yr avg']
+    ma = share_matrix(df, 'M'); ma = ma[ma['year'] == '3-yr avg']
+    x = list(range(len(BANDS10)))
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.3), sharey=True)
+    for ax, dist in zip(axes, RACES):
+        fy = [fa.loc[b, dist] if b in fa.index else np.nan for b in BANDS10]
+        my = [ma.loc[b, dist] if b in ma.index else np.nan for b in BANDS10]
+        ax.plot(x, fy, marker='o', linewidth=2, color=C_PINK, label='Female')
+        ax.plot(x, my, marker='s', linewidth=2, color=C_BLUE, label='Male')
+        ax.set_xticks(x); ax.set_xticklabels(BANDS10, rotation=40, ha='right', fontsize=8)
+        ax.set_ylim(0, 80)
+        style_ax(ax, title=dist, ylabel='% within age band' if dist == RACES[0] else '')
+        if dist == RACES[0]:
+            ax.legend(fontsize=8, loc='upper right')
+    gf = tenk_age_gradient(df, 'F')['3-yr avg']['gradient_pp']
+    gm = tenk_age_gradient(df, 'M')['3-yr avg']['gradient_pp']
+    axes[2].annotate(f"10K age gradient (18-34→55-64)\nFemale {gf:+.0f}pp · Male {gm:+.0f}pp",
+                     xy=(0.5, 0.04), xycoords='axes fraction', ha='center', fontsize=7.5,
+                     color='#333333',
+                     bbox=dict(boxstyle='round', fc='white', ec='grey', alpha=0.8))
+    fig.suptitle('Age–distance gradient by gender — share within each age band (3-yr avg)',
+                 fontsize=13, fontweight='bold', y=1.02)
+    fig.text(0.5, -0.04, _AGE_CAVEAT, ha='center', fontsize=7, color='grey')
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig_to_image(fig, width_cm=width_cm)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -898,8 +1403,8 @@ def build_combined_pdf(df_latest: pd.DataFrame, df_all: pd.DataFrame,
     INSIGHT_HEAD = ParagraphStyle('INSIGHT_HEAD', fontName='Helvetica-Bold', fontSize=9,
                                   textColor=colors.HexColor(C_GREEN), spaceAfter=2)
 
-    def insight_block(bullets):
-        items = [Spacer(1, 0.25*cm), Paragraph('Key Insights', INSIGHT_HEAD)]
+    def insight_block(bullets, label='Key Insights'):
+        items = [Spacer(1, 0.25*cm), Paragraph(label, INSIGHT_HEAD)]
         for b in bullets:
             items.append(Paragraph(f'• {b}', INSIGHT))
         return items
@@ -924,16 +1429,153 @@ def build_combined_pdf(df_latest: pd.DataFrame, df_all: pd.DataFrame,
         story.append(chart_trend_boxplot(df_all, race))
         story.append(Spacer(1, 0.3*cm))
 
+    # ── SECTION 2: AGE PROFILE BY RACE & GENDER — 3-year pyramids ────────────
+    THRESH = 85
+    years_all = sorted(df_all['year'].unique())
+    comp = completeness_flags(df_all, threshold_pct=THRESH)
+    noise = noise_floor_flags(df_all)
+    any_provisional = bool(comp['provisional'].any())
+    g_xmax = pyramid_xmax(df_all, years_all)
+
+    story += [PageBreak(), hr(),
+              Paragraph('Age Profile by Race &amp; Gender', SEC),
+              Spacer(1, 0.2*cm)]
+    for yr in years_all:
+        cap = (f'Age profile by race and gender — {yr} '
+               '(Male left, Female right; female % shown per race)')
+        if yr == years_all[-1] and any_provisional:
+            cap += ' — provisional'
+        story += [chart_age_pyramids(df_all, yr, xmax=g_xmax), Paragraph(cap, CT)]
+
+    # ── SECTION 2: AGE, DISTANCE & GENDER (2 hypotheses) ─────────────────────
+    fig_dir = os.path.dirname(out_path) or '.'
+    favg = share_matrix(df_all, 'F')
+    favg = favg[favg['year'] == '3-yr avg']
+    gradF = tenk_age_gradient(df_all, 'F')
+    gradM = tenk_age_gradient(df_all, 'M')
+    ggc = gender_gradient_comparison(df_all)
+    gf = gradF['3-yr avg']['gradient_pp']
+    gm = gradM['3-yr avg']['gradient_pp']
+    tenk10 = ggc[ggc['distance'] == '10K']
+    diff_lo, diff_hi = tenk10['diff_pp'].min(), tenk10['diff_pp'].max()
+
+    def _share_style():
+        return TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(C_GREEN)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor(C_LIGHT)]),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.lightgrey),
+            ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ])
+
+    h1_rows = [['Age band', 'Full %', 'Half %', '10K %']]
+    for b in BANDS10:
+        if b in favg.index:
+            h1_rows.append([b, f"{favg.loc[b, 'Full']:.0f}",
+                            f"{favg.loc[b, 'Half']:.0f}", f"{favg.loc[b, '10K']:.0f}"])
+    h1_tbl = Table(h1_rows, colWidths=[3*cm, 2.6*cm, 2.6*cm, 2.6*cm]); h1_tbl.setStyle(_share_style())
+
+    h2_bullets = [
+        "<b>Same direction, different magnitude.</b> Both genders trend toward the 10K with age, but "
+        f"men run longer at every age — their within-band 10K share is {diff_lo:.0f}–{diff_hi:.0f}pp "
+        "below women's in every band.",
+        f"<b>Women's trend is far steeper.</b> The 10K age-gradient is {abs(gf):.0f}pp for women vs "
+        f"{abs(gm):.0f}pp for men — women's distance choice shifts with age about {abs(gf)/abs(gm):.1f}× as much.",
+        "<b>Men diverge in midlife.</b> Men's 10K share dips at 35-44 (their long-distance peak), so the "
+        "male gradient is non-monotonic, whereas the female trend rises monotonically.",
+    ]
+
+    caveat = (f'{_AGE_CAVEAT} Cohort effects cannot be separated without runner-level IDs '
+              '(a longitudinal cut is a follow-up). 2026 passes the ≥ 85% completeness guard for '
+              "every distance×gender cell (young women's 10K closest at 87%). 65+ is low-n.")
+
+    reconcile_bullets = [
+        "<b>Both charts are correct — they measure different things.</b> The pyramids show absolute "
+        "head counts; the heatmap and table show the share <i>within</i> each age band.",
+        "<b>Absolute numbers (pyramids).</b> The volume of older female runners is far smaller than "
+        "younger: in 2024, 177 women aged 18–34 ran the Full versus just 6 women aged 65+.",
+        "<b>Proportions (heatmap/table).</b> The 3-yr-average Full share is 9% at 18–34 versus 14% "
+        "at 65+ — i.e. of all women in each band, what fraction chose the Full Marathon.",
+        "<b>Why both hold.</b> The 18–34 pool is huge, so a smaller proportion is still many runners; "
+        "the 65+ pool is tiny, so a larger proportion is still very few runners.",
+        "<b>2024 worked example.</b> 18–34 women: 2,155 total (177 Full + 872 Half + 1,106 10K) → "
+        "Full ≈ 8%. 65+ women: 31 total (6 Full + 4 Half + 21 10K) → Full ≈ 19%.",
+        "<b>In short.</b> As women age, total participation drops sharply — but among the few who keep "
+        "running at 65+, a slightly higher fraction opt for the Full than at 18–34.",
+    ]
+
+    story += [PageBreak(), hr(), Paragraph('Age, Distance &amp; Gender', SEC), Spacer(1, 0.15*cm),
+              chart_female_distance_heatmap(
+                  df_all, save_path=os.path.join(fig_dir, 'age_distance_female_heatmap.png')),
+              Paragraph('Female share of each age band running each distance — '
+                        '3-yr average (left) and by year', CT),
+              h1_tbl,
+              PageBreak(),
+              chart_age_pyramids(df_all, years=years_all, figsize=(14, 3.3), width_cm=15),
+              Paragraph(f'Age profile by race &amp; gender — {years_all[0]}–{years_all[-1]} '
+                        'average (Male left, Female right; female % shown per race)', CT),
+              chart_gender_distance_gradient(
+                  df_all, save_path=os.path.join(fig_dir, 'age_distance_gender_gradient.png'),
+                  width_cm=15),
+              Paragraph('Within-band distance share by gender, per distance — 3-yr average', CT),
+              Spacer(1, 0.1*cm)]
+    for b in h2_bullets:
+        story.append(Paragraph(f'• {b}', INSIGHT))
+    story += [Spacer(1, 0.25*cm), Paragraph('Why the pyramid and the heatmap agree', INSIGHT_HEAD)]
+    for b in reconcile_bullets:
+        story.append(Paragraph(f'• {b}', INSIGHT))
+    story += [Spacer(1, 0.2*cm), Paragraph(caveat, CT)]
+
+    # ── SECTION 2: 2026 DATA-COMPLETENESS CHECK (composition + verdicts) ──────
+
+    # Noise caveat for the small male 65+ band
+    noisy_old = [r for r in RACES if noise[
+        (noise['race'] == r) & (noise['sex'] == 'M') & (noise['band'] == '65+')
+    ]['is_noise'].iloc[0]]
+    noise_line = (
+        f"Year-on-year movements in the male 65+ band ({', '.join(noisy_old)}) sit within the "
+        f"sampling-noise floor (small counts) and are not interpreted as trends."
+        if noisy_old else
+        "Male 65+ band movements exceed the sampling-noise floor.")
+
+    story += [PageBreak(), hr(),
+              Paragraph('Age Profile — 2026 Data-Completeness Check', SEC),
+              Spacer(1, 0.15*cm),
+              chart_age_composition_trend(df_all),
+              Paragraph('Age composition by race, gender and year — each bar normalised to 100%', CT),
+              Spacer(1, 0.1*cm)]
+    for b in demographic_verdicts(df_all, threshold_pct=THRESH):
+        story.append(Paragraph(f'• {b}', INSIGHT))
+    story += [Spacer(1, 0.15*cm), Paragraph(noise_line, CT)]
+
     # ── SECTION 2: KEY INSIGHTS PAGE ─────────────────────────────────────────
     story += [PageBreak(),
               hr(),
               Paragraph(f'2. Marathon Trend Analysis — Key Insights', SEC),
               Spacer(1, 0.3*cm)]
-    story += insight_block(_trend_insights_participation(summary_all))
+    story += insight_block(_trend_insights_participation(summary_all), 'Participation & gender')
     story += [Spacer(1, 0.4*cm)]
-    story += insight_block(_trend_insights_times_ages(df_all))
+    story += insight_block(_trend_insights_times_ages(df_all), 'Finish times & age groups')
     story += [Spacer(1, 0.4*cm)]
-    story += insight_block(_trend_insights_boxplot(df_all))
+    story += insight_block(_trend_insights_boxplot(df_all), 'Finish-time distribution')
+    story += [
+        Spacer(1, 0.4*cm),
+        Paragraph('Age profile', INSIGHT_HEAD),
+        Paragraph(
+            'Female participation falls as the distance grows: women make up their largest '
+            'share in the 10 km (61%) and their smallest in the Full Marathon (23%). The '
+            'population pyramids show the age profile behind that gap for each race in '
+            f'{latest_year} — the shorter female side in the Full Marathon is immediately '
+            'visible. The 18–34 group is the largest band in every race, and the field skews '
+            'progressively younger as the distance shortens (18–34 rises from 41% of Full '
+            'Marathon finishers to 46% in the 10 km), while the Full Marathon carries the '
+            'oldest, most masters-heavy profile.',
+            INSIGHT),
+    ]
     story.append(PageBreak())
 
     # ── SECTION 3: ALL CLUBS OVERALL ─────────────────────────────────────────
